@@ -3,6 +3,7 @@ import threading
 import time
 import signal
 import json
+import gc
 import matplotlib.pyplot as plt
 from photutils.aperture import CircularAperture
 
@@ -12,7 +13,7 @@ lat = -34.898558500345416
 long = 138.5800482838913
 
 
-def analyse(todo: list[str], exposures: list[Exposure], drift_data: dict, lock, shutdown_event):
+def analyse(todo: list[str], last_exposure: list, drift_data: dict, lock, shutdown_event):
     ra = None
     dec = None
     radius = None
@@ -43,13 +44,12 @@ def analyse(todo: list[str], exposures: list[Exposure], drift_data: dict, lock, 
         ra, dec, radius = e.radec_radius()
 
         with lock:
-            if len(exposures) == 0:
-                exposures.append(e)
+            if len(last_exposure) == 0:
+                last_exposure.append(e)
                 print(f"{image} processed (first image)")
                 continue
-            last = exposures[-1]
+            last = last_exposure[0]
             current = e
-            exposures.append(e)
             print(f"{image} processed")
 
         alt, az = da.get_error(last, current)
@@ -82,6 +82,14 @@ def analyse(todo: list[str], exposures: list[Exposure], drift_data: dict, lock, 
 
                 json.dump(export_data, f)
 
+        # Free the old exposure completely and replace with current
+        with lock:
+            last.image = None  # Free the large image array
+            last_exposure[0] = current  # Replace with current exposure
+
+        # Force garbage collection to free memory immediately
+        gc.collect()
+
 
 def monitor(todo: list[str], lock, shutdown_event):
     seen_files = set()
@@ -98,7 +106,7 @@ def monitor(todo: list[str], lock, shutdown_event):
         time.sleep(1)
 
 
-def run_visualization(exposures: list[Exposure], drift_data: dict, lock, shutdown_event):
+def run_visualization(last_exposure: list, drift_data: dict, lock, shutdown_event):
     """Run live visualization in main thread (matplotlib requirement)"""
     plt.ion()
     fig, (ax_img, ax_drift) = plt.subplots(1, 2, figsize=(16, 6))
@@ -106,12 +114,12 @@ def run_visualization(exposures: list[Exposure], drift_data: dict, lock, shutdow
     try:
         while not shutdown_event.is_set():
             with lock:
-                if len(exposures) == 0:
+                if len(last_exposure) == 0:
                     time.sleep(1)
                     continue
 
                 # Get the most recent exposure
-                latest = exposures[-1]
+                latest = last_exposure[0]
 
                 # Copy drift data
                 alt_errors = drift_data.get('alt', []).copy()
@@ -166,8 +174,8 @@ def run_visualization(exposures: list[Exposure], drift_data: dict, lock, shutdow
 lock = threading.Lock()
 todo = sorted([im for im in os.listdir() if ".CR3" in im])
 
-# has the analysed images
-exposures = []
+# has the last exposure for drift calculation (only keep one in memory)
+last_exposure = []
 
 # drift error data for plotting - load existing data if available
 drift_data = {'alt': [], 'az': [], 'times': []}
@@ -185,7 +193,7 @@ except (FileNotFoundError, json.JSONDecodeError):
 shutdown_event = threading.Event()
 
 # Create threads
-analyser = threading.Thread(target=analyse, args=(todo, exposures, drift_data, lock, shutdown_event))
+analyser = threading.Thread(target=analyse, args=(todo, last_exposure, drift_data, lock, shutdown_event))
 monitoriser = threading.Thread(target=monitor, args=(todo, lock, shutdown_event))
 
 
