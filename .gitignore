@@ -164,3 +164,4 @@ tmp/
 # settings.json
 
 *.CR3
+test/
