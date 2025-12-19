@@ -1,1 +1,0 @@
-'/home/woodsy/projects/Astrophotography/IMG_6770.CR3' -> 'test_00001.fit'
