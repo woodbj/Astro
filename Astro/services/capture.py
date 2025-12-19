@@ -10,15 +10,17 @@ class Capture:
 
     def end(self, *args):
         self.interrupt = True
-        print(" Exiting after exposure complete ", end="", flush=True)
 
     def run(self, exposure_duration, download_period_s=None):
-        count = 1
+        # Setup camera
         self.camera.set_bulb(exposure_duration)
 
+        # Admin
         last_download_time = 0
         self.interrupt = False
         signal.signal(signal.SIGINT, self.end)
+
+        # Loop until interrupted
         while not self.interrupt:
             # print current time
             print(f"{time.asctime()} > ", end="", flush=True)
@@ -31,12 +33,10 @@ class Capture:
                     last_download_time = now
 
             # take exposure
-            print(f"Exposure {count}...", end="", flush=True)
-            name = self.camera.capture()
-            print(f"Complete! {name}{' Downloaded' if self.camera.download else ''}")
+            self.camera.capture()
 
             # remove download
             self.camera.download = False
-
-            count += 1
+        
+        # Remove interrupt handler
         signal.signal(signal.SIGINT, signal.SIG_IGN)

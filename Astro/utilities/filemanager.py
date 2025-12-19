@@ -10,7 +10,7 @@ class FileHandler(FileSystemEventHandler):
             # Your script logic here
 
 
-class Tracking:
+class FileManager:
     def __init__(self):
         self.observer = Observer()
         self.observer.schedule(FileHandler(), path='.', recursive=False)

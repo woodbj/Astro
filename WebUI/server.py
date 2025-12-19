@@ -7,11 +7,20 @@ Provides a browser interface for viewing camera stream and measuring star FWHM.
 import cv2
 import numpy as np
 import os
-from flask import Flask, Response, render_template, jsonify, request
+from flask import Flask, Response, render_template, jsonify, request, send_file
 import threading
+from io import BytesIO
 
 from Astro.hardware import CameraStream
 from Astro.utilities import calculate_fwhm, draw_star_overlay, FWHMTracker
+
+try:
+    import rawpy
+    import imageio
+    HAS_RAWPY = True
+except ImportError:
+    HAS_RAWPY = False
+    print("Warning: rawpy not installed. CR3 preview not available.")
 
 # Get the directory where this file is located
 WEBUI_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -195,6 +204,68 @@ def camera_status():
     return jsonify({'running': is_running})
 
 
+@app.route('/api/preview_raw/<path:filename>')
+def preview_raw(filename):
+    """
+    Preview a CR3/RAW file by extracting embedded JPEG or processing.
+
+    Args:
+        filename: Path to the raw file
+    """
+    if not HAS_RAWPY:
+        return jsonify({'error': 'rawpy not installed'}), 500
+
+    try:
+        # Open the raw file
+        with rawpy.imread(filename) as raw:
+            # Extract embedded JPEG preview (fast)
+            try:
+                thumb = raw.extract_thumb()
+                if thumb.format == rawpy.ThumbFormat.JPEG:
+                    # Return the embedded JPEG directly
+                    return Response(thumb.data, mimetype='image/jpeg')
+            except:
+                pass
+
+            # If no preview, process the raw data (slower but better quality)
+            rgb = raw.postprocess(
+                use_camera_wb=True,
+                half_size=True,  # Faster processing
+                no_auto_bright=False,
+                output_bps=8
+            )
+
+            # Convert to JPEG
+            img_io = BytesIO()
+            imageio.imwrite(img_io, rgb, format='JPEG', quality=85)
+            img_io.seek(0)
+
+            return send_file(img_io, mimetype='image/jpeg')
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/list_captures')
+def list_captures():
+    """List captured images in a directory."""
+    # You can customize this path
+    capture_dir = os.path.join(os.path.dirname(WEBUI_DIR), 'captures')
+
+    if not os.path.exists(capture_dir):
+        return jsonify({'images': []})
+
+    images = []
+    for filename in os.listdir(capture_dir):
+        if filename.lower().endswith(('.cr3', '.cr2', '.nef', '.arw', '.jpg', '.jpeg', '.png')):
+            images.append({
+                'filename': filename,
+                'path': os.path.join(capture_dir, filename)
+            })
+
+    return jsonify({'images': images})
+
+
 def cleanup():
     """Clean up resources on shutdown."""
     global camera_stream
@@ -202,7 +273,7 @@ def cleanup():
         camera_stream.stop()
 
 
-def run_server(host='0.0.0.0', port=5000, debug=False):
+def run_server(host='0.0.0.0', port=5000, debug=True):
     """
     Run the web server.
 
@@ -216,6 +287,8 @@ def run_server(host='0.0.0.0', port=5000, debug=False):
 
     print("Starting web-based FWHM measurement tool...")
     print(f"Open http://localhost:{port} in your browser")
+    if debug:
+        print("Debug mode enabled - server will auto-reload on file changes")
 
     app.run(host=host, port=port, debug=debug, threaded=True)
 
