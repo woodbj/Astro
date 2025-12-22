@@ -4,15 +4,83 @@ import numpy as np
 import threading
 import queue
 from typing import Optional
-# from abc import ABC, abstractmethod
-
-# class ImageFeed:
-#     def __init__(self):
-#         pass
+from abc import ABC, abstractmethod
+from ..utilities.filemanager import FileManager
+import rawpy
 
 
+class Stream(ABC):
+    @abstractmethod
+    def __init__(self):
+        super().__init__()
+        self.running = True
 
-class CameraStream:
+    @abstractmethod
+    def get_bytes(self):
+        pass
+
+    def generate(self):
+        """Generator function for video streaming."""
+        while self.running:
+            frame = self.get_bytes()
+            if frame is None:
+                continue
+
+            # Encode frame as JPEG
+            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if not ret:
+                continue
+
+            frame_bytes = buffer.tobytes()
+
+            # Yield frame in multipart format
+            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
+
+
+class FileStream(Stream):
+    def __init__(self, filemanager: FileManager):
+        super().__init__()
+        self.files = filemanager
+        self.last_file = None
+        self.cached_image = None
+
+    def get_bytes(self):
+        import time
+
+        file = self.files.get_latest()
+
+        # If same file, return cached image
+        if file == self.last_file and self.cached_image is not None:
+            time.sleep(0.1)  # Small sleep to prevent busy-wait
+            return self.cached_image
+
+        # File changed or no cache, process it
+        if file is None:
+            time.sleep(1)  # Wait longer when no files available
+            return None
+
+        with rawpy.imread(file) as raw:
+            image = raw.postprocess()
+
+        height, width = image.shape[:2]
+        if width > 1920:
+            scale = 1920 / width
+            new_width = 1920
+            new_height = int(height * scale)
+            image_resized = cv2.resize(image, (new_width, new_height))
+        else:
+            image_resized = image
+
+        image_bgr = cv2.cvtColor(image_resized, cv2.COLOR_RGB2BGR)
+
+        # Cache the result
+        self.last_file = file
+        self.cached_image = image_bgr
+
+        return image_bgr
+
+
+class CameraStream(Stream):
     """Handles gphoto2 camera live view stream capture."""
 
     def __init__(self, camera: Camera):
@@ -22,6 +90,7 @@ class CameraStream:
         Args:
             max_queue_size: Maximum number of frames to queue (older frames dropped)
         """
+        super().__init__()
         self.camera = camera
         self.frame_queue = queue.Queue(2)
         self.running = False
@@ -86,22 +155,20 @@ class CameraStream:
 
         print("Camera stream stopped")
 
-    def generate(self):
-        """Generator function for video streaming."""
-        while self.running:
-            frame = self.get_frame(timeout=1.0)
-            if frame is None:
-                continue
+    def get_bytes(self) -> Optional[np.ndarray]:
+        """
+        Get the next frame from the queue.
 
-            # Encode frame as JPEG
-            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            if not ret:
-                continue
+        Args:
+            timeout: Maximum time to wait for a frame
 
-            frame_bytes = buffer.tobytes()
-
-            # Yield frame in multipart format
-            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
+        Returns:
+            Frame as numpy array or None if timeout
+        """
+        try:
+            return self.frame_queue.get(timeout=1.0)
+        except queue.Empty:
+            return None
 
     def get_frame(self, timeout: float = 1.0) -> Optional[np.ndarray]:
         """
@@ -132,7 +199,7 @@ class CameraStream:
 
     def _read_mjpeg_stream(self):
         """Read MJPEG stream from gphoto2 in background thread."""
-        bytes_data = b''
+        bytes_data = b""
 
         while self.running:
             try:
@@ -143,22 +210,19 @@ class CameraStream:
                 bytes_data += chunk
 
                 # Find JPEG boundaries
-                a = bytes_data.find(b'\xff\xd8')  # JPEG start marker
-                b = bytes_data.find(b'\xff\xd9')  # JPEG end marker
+                a = bytes_data.find(b"\xff\xd8")  # JPEG start marker
+                b = bytes_data.find(b"\xff\xd9")  # JPEG end marker
 
                 if a != -1 and b != -1 and b > a:
-                    jpg = bytes_data[a:b+2]
-                    bytes_data = bytes_data[b+2:]
+                    jpg = bytes_data[a : b + 2]
+                    bytes_data = bytes_data[b + 2 :]
 
                     # Validate JPEG has minimum size
                     if len(jpg) < 100:
                         continue
 
                     # Decode JPEG frame
-                    frame = cv2.imdecode(
-                        np.frombuffer(jpg, dtype=np.uint8),
-                        cv2.IMREAD_COLOR
-                    )
+                    frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
 
                     if frame is not None:
                         # Store latest frame
