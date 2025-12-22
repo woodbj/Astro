@@ -44,11 +44,38 @@ class Exposure:
         return self.image
 
     def get_bytes(self):
+        # Check if cached JPEG exists
+        jpeg_cache_path = f"{self.path}_preview.jpg"
+        if os.path.exists(jpeg_cache_path):
+            with open(jpeg_cache_path, 'rb') as f:
+                frame_bytes = f.read()
+            return b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+
+        # Generate and cache JPEG
         if self.image is None:
             self.load_image()
 
-        ret, buffer = cv2.imencode(".jpg", self.image)
+        # Resize for faster loading (max 1920px wide)
+        height, width = self.image.shape[:2]
+        if width > 1920:
+            scale = 1920 / width
+            new_width = 1920
+            new_height = int(height * scale)
+            image_resized = cv2.resize(self.image, (new_width, new_height))
+        else:
+            image_resized = self.image
+
+        # Convert RGB to BGR for OpenCV
+        image_bgr = cv2.cvtColor(image_resized, cv2.COLOR_RGB2BGR)
+        ret, buffer = cv2.imencode(".jpg", image_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if not ret:
+            raise Exception("Failed to encode image as JPEG")
         frame_bytes = buffer.tobytes()
+
+        # Cache to disk
+        with open(jpeg_cache_path, 'wb') as f:
+            f.write(frame_bytes)
+
         return b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
 
     def load_image_shape(self):
@@ -81,8 +108,14 @@ class Exposure:
             json.dump(self.data, f, indent=4)
 
     def import_data(self):
-        self.get_metadata()
-        self.export_data()
+        # Check if cached metadata exists
+        json_path = f"{self.path}.json"
+        if os.path.exists(json_path):
+            with open(json_path, 'r') as f:
+                self.data = json.load(f)
+        else:
+            self.get_metadata()
+            self.export_data()
 
     def make_xyls(self):
         # Create FITS table

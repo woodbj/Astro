@@ -22,6 +22,30 @@ async function startup() {
             }
         }
     }
+    loadCameraTab()
+}
+
+async function capture() {
+    try {
+        const response = await fetch('/api/camera/capture', {
+            method: 'POST',
+        });
+
+        if (response.ok) {
+            streamRunning = true;
+            console.log('Capture started successfully');
+            return true;
+        } else {
+            const data = await response.json();
+            alert('Failed to capture:', data.error);
+            console.error('Failed to capture:', data.error);
+            return false;
+        }
+    } catch (error) {
+        console.error(error);
+        alert(error);
+        return false;
+    }
 }
 
 // Camera control functions
@@ -103,15 +127,85 @@ async function loadCameraTab() {
     if (response.ok) {
         const data = await response.json();
         console.log(data);
-        // TODO: Populate camera config UI with data
+
+        // Map dropdown IDs to config keys
+        const dropdownMappings = {
+            'iso': 'iso',
+            'shutterspeed': 'shutterspeed',
+            'aperture': 'aperture'
+        };
+
+        // Populate each dropdown
+        Object.entries(dropdownMappings).forEach(([dropdownId, configKey]) => {
+            const dropdown = document.getElementById(dropdownId);
+            if (dropdown && data.data[configKey]) {
+                populateDropdown(dropdown, data.data[configKey]);
+
+                // Add change event listener to apply setting
+                dropdown.addEventListener('change', async function() {
+                    await applyCameraSetting(configKey, this.value);
+                });
+            }
+        });
     } else {
         console.error('Failed to load camera config');
+    }
+}
+
+function populateDropdown(dropdown, configData) {
+    // Clear existing options
+    dropdown.innerHTML = '';
+
+    // Add options from Choices array
+    configData.Choices.forEach(choice => {
+        const option = document.createElement('option');
+        option.value = choice;
+        option.textContent = choice;
+
+        // Mark current value as selected
+        if (choice === configData.Current) {
+            option.selected = true;
+        }
+
+        dropdown.appendChild(option);
+    });
+}
+
+async function applyCameraSetting(setting, value) {
+    try {
+        const response = await fetch('/api/camera/set_config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                setting: setting,
+                value: value
+            })
+        });
+
+        if (response.ok) {
+            console.log(`Set ${setting} to ${value}`);
+        } else {
+            const data = await response.json();
+            console.error('Failed to set camera setting:', data.error);
+            alert('Failed to update camera setting');
+        }
+    } catch (error) {
+        console.error('Error setting camera config:', error);
+        alert('Error updating camera setting');
     }
 }
 
 // Initialize feed when page loads
 window.addEventListener('DOMContentLoaded', function() {
     startup();
+
+    // Force feed refresh with timestamp to avoid caching
+    const feed = document.getElementById('feed');
+    if (feed && feed.src.includes('/image_feed')) {
+        feed.src = '/image_feed?' + new Date().getTime();
+    }
 });
 
 // Cleanup on page unload

@@ -19,7 +19,29 @@
                     <li class="nav-item" role="presentation"><a class="nav-link active" role="tab" data-bs-toggle="tab" href="#tab-1" onclick="loadCameraTab()">Camera</a></li>
                 </ul>
                 <div class="tab-content">
-                    <div class="tab-pane active" role="tabpanel" id="tab-1"><button class="btn btn-success w-100" id="live-start-stop" type="button" onclick="toggleStream()" data-active="false">Start Live</button></div>
+                    <div class="tab-pane active" role="tabpanel" id="tab-1"><button class="btn btn-success w-100" id="live-start-stop" type="button" onclick="toggleStream()" data-active="false">Start Live</button><button class="btn btn-primary w-100" id="capture" type="button" onclick="capture()">Single Shot</button>
+                        <p>ISO</p><select id="iso" class="form-select">
+                            <optgroup label="This is a group">
+                                <option value="12" selected="">This is item 1</option>
+                                <option value="13">This is item 2</option>
+                                <option value="14">This is item 3</option>
+                            </optgroup>
+                        </select>
+                        <p>Shutter</p><select id="shutterspeed" class="form-select">
+                            <optgroup label="This is a group">
+                                <option value="12" selected="">This is item 1</option>
+                                <option value="13">This is item 2</option>
+                                <option value="14">This is item 3</option>
+                            </optgroup>
+                        </select>
+                        <p>Aperture</p><select id="aperture" class="form-select">
+                            <optgroup label="This is a group">
+                                <option value="12" selected="">This is item 1</option>
+                                <option value="13">This is item 2</option>
+                                <option value="14">This is item 3</option>
+                            </optgroup>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
