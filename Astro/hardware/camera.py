@@ -157,14 +157,28 @@ class Camera:
     def end_stream(self):
         if self.stream is None:
             return True
+
+        # Send SIGINT for graceful shutdown
         self.stream.send_signal(signal.SIGINT)
-        self.stream.kill()
-        self.stream.wait()
+
+        try:
+            # Wait up to 2 seconds for graceful exit
+            self.stream.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            # If still running after timeout, force kill
+            self.stream.kill()
+            self.stream.wait()
+
         self.stream = None
+
+        # Give camera a moment to reset
+        time.sleep(0.5)
+
         try:
             self.command("--set-config eosremoterelease=4")
             return True
-        except Exception:
+        except Exception as e:
+            print(f"Warning: Could not reset camera release mode: {e}")
             return False
 
 

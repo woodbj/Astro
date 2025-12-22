@@ -4,6 +4,12 @@ import numpy as np
 import threading
 import queue
 from typing import Optional
+# from abc import ABC, abstractmethod
+
+# class ImageFeed:
+#     def __init__(self):
+#         pass
+
 
 
 class CameraStream:
@@ -21,77 +27,68 @@ class CameraStream:
         self.running = False
         self.process = None
         self.stream_thread = None
-        self.frame_callbacks = []
         self.latest_frame = None
         self.frame_lock = threading.Lock()
+        self.state_lock = threading.Lock()
 
     def start(self):
-        if self.running:
-            print("Stream already running")
+        with self.state_lock:
+            if self.running:
+                print("Stream already running")
+                return True
+
+            if not self.camera.is_on():
+                raise Exception("Camera turned off")
+
+            print("Starting camera stream...")
+
+            # Start gphoto2 process
+            try:
+                self.process = self.camera.start_stream()
+            except Exception as e:
+                # Ensure we clean up any partial state
+                self.process = None
+                raise Exception(f"Stream failed to start camera video: {e}")
+
+            # Start stream reading thread
+            self.running = True
+            self.stream_thread = threading.Thread(target=self._read_mjpeg_stream, daemon=True)
+            self.stream_thread.start()
+
+            print("Camera stream started")
             return True
-        
-        if not self.camera.is_on():
-            raise Exception("Camera turned off")
-
-        print("Starting camera stream...")
-
-        # Start gphoto2 process
-        try:
-            self.process = self.camera.start_stream()
-        except Exception as e:
-            print(f"Error starting stream: {e}")
-            return e
-
-        # Start stream reading thread
-        self.running = True
-        self.stream_thread = threading.Thread(target=self._read_mjpeg_stream, daemon=True)
-        self.stream_thread.start()
-
-        print("Camera stream started")
-        return True
 
     def stop(self):
         """Stop the camera stream and clean up resources."""
-        if not self.running:
-            return
+        with self.state_lock:
+            if not self.running:
+                return
 
-        print("Stopping camera stream...")
+            print("Stopping camera stream...")
 
-        # Signal thread to stop
-        self.running = False
+            # Signal thread to stop first
+            self.running = False
 
-        # Release camera
+            # Store thread reference for joining outside lock
+            thread_to_join = self.stream_thread
+
+        # Release camera process (kills the stream, causing thread to exit)
         try:
             self.camera.end_stream()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error ending stream: {e}")
 
-        # Wait for thread to finish
-        if self.stream_thread:
-            self.stream_thread.join(timeout=1)
+        # Wait for thread to finish (outside lock so start() isn't blocked)
+        if thread_to_join:
+            thread_to_join.join()
+            if thread_to_join.is_alive():
+                print("Warning: Stream thread did not terminate cleanly")
 
         print("Camera stream stopped")
 
-    def get(self):
+    def generate(self):
         """Generator function for video streaming."""
-        while True:
-            if not self.running:
-                # Send a placeholder frame
-                blank = np.zeros((480, 640, 3), dtype=np.uint8)
-                cv2.putText(
-                    blank,
-                    "No Stream Available",
-                    (150, 240),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (255, 255, 255),
-                    2,
-                )
-                ret, buffer = cv2.imencode(".jpg", blank)
-                frame_bytes = buffer.tobytes()
-                yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
-                continue
-
+        while self.running:
             frame = self.get_frame(timeout=1.0)
             if frame is None:
                 continue
@@ -176,13 +173,6 @@ class CameraStream:
                                 pass
                         self.frame_queue.put(frame)
 
-                        # Call registered callbacks
-                        for callback in self.frame_callbacks:
-                            try:
-                                callback(frame.copy())
-                            except Exception as e:
-                                print(f"Frame callback error: {e}")
-
             except Exception as e:
                 if self.running:  # Only print if we're supposed to be running
                     print(f"Stream reading error: {e}")
@@ -198,4 +188,8 @@ class CameraStream:
         self.stop()
 
     def __del__(self):
-        self.stop()
+        try:
+            self.stop()
+        except Exception:
+            # Ignore errors during cleanup in destructor
+            pass

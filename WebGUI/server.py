@@ -36,7 +36,7 @@ def index():
 @app.route("/video_feed")
 def video_feed():
     """Video streaming route."""
-    return Response(camera_stream.get(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return Response(camera_stream.generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/image_feed")
