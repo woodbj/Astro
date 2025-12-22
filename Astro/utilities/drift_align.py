@@ -1,5 +1,4 @@
 from astropy.coordinates import AltAz, EarthLocation
-from astropy.time import Time
 import astropy.units as u
 from .exposure import Exposure
 
@@ -10,7 +9,7 @@ class DriftAlign:
         self.lon = lon * u.deg
         pass
 
-    def get_error(self, image1: str, image2: str):
+    def get_error(self, image1: Exposure, image2: Exposure):
         # Good drift alignment: ≤ 30 arcsec/min.
         # Excellent alignment: ≤ 10–15 arcsec/min.
 
@@ -21,34 +20,22 @@ class DriftAlign:
         location = EarthLocation(lat=self.lat, lon=self.lon)
 
         # -----------------------------
-        # 2. Load exposures
+        # 2. Load exposure coordinates
         # -----------------------------
-        e1 = Exposure(image1)
-        e2 = Exposure(image2)
-
-        # Get WCS for exposures (automatically plate solves if necessary)
-        wcs1 = e1.get_wcs()
-        wcs2 = e2.get_wcs()
-
-        # Image centers
-        cx1, cy1 = e1.get_image_shape()[1] // 2, e1.get_image_shape()[0] // 2
-        cx2, cy2 = e2.get_image_shape()[1] // 2, e2.get_image_shape()[0] // 2
 
         # RA/Dec of image centers
-        radec1 = wcs1.pixel_to_world(cx1, cy1)  # RA/Dec of 1st image centre
-        radec2 = wcs2.pixel_to_world(cx2, cy2)  # RA/Dec of 2nd image centre
+        radec1 = image1.radec()  # RA/Dec of 1st image centre
+        radec2 = image2.radec()  # RA/Dec of 2nd image centre
 
         # -----------------------------
         # 3. Convert to Alt/Az
         # -----------------------------
         # Get times
-        time1 = Time(e1.time)
-        time2 = Time(e2.time)
-        dt = (time2 - time1).to(u.min)
+        dt = (image2.time - image1.time).to(u.min)
 
         # Get reference frames for the two times
-        frame1 = AltAz(obstime=time1, location=location)
-        frame2 = AltAz(obstime=time2, location=location)
+        frame1 = AltAz(obstime=image1.time, location=location)
+        frame2 = AltAz(obstime=image2.time, location=location)
 
         # Convert RA/Dec coordinates to Alt/Az
         altaz1 = radec1.transform_to(frame1)  # exposure 1 actual Alt/Az

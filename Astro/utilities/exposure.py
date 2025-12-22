@@ -6,11 +6,13 @@ import os
 from astropy.io import fits
 from astropy.wcs import WCS
 import subprocess
-from astropy.stats import sigma_clipped_stats
-from astropy.nddata import block_reduce
-from photutils.detection import DAOStarFinder
 from photutils.aperture import CircularAperture
 import matplotlib.pyplot as plt
+from skimage.feature import blob_doh
+from astropy.time import Time
+from datetime import datetime
+from astropy.coordinates import SkyCoord
+import cv2
 
 
 class Exposure:
@@ -23,24 +25,62 @@ class Exposure:
         self.path = f"{self.directory}/{self.stub}"
         self.image_path = f"{self.path}.{self.img_ext}"
         self.data = dict()
-        self.import_data()
         self.image: np.ndarray = None
         self.star_xy = None
-        self.time = None
-        self.fwhm = 15
-        self.threshold_factor = 3
-        self.sources = None
         self.wcs = None
+        self.fwhm = None
+        self.ra = None
+        self.dec = None
+        self.radius = None
+        self.import_data()
 
-    def get_image(self):
-        if self.image is None:
-            with rawpy.imread(f"{self.image_path}") as raw:
-                self.image = raw.postprocess()
+        time = self.data["time_iso"]
+        time = datetime.fromisoformat(time)
+        self.time = Time(time)
+
+    def load_image(self):
+        with rawpy.imread(f"{self.image_path}") as raw:
+            self.image = raw.postprocess()
         return self.image
 
-    def get_image_shape(self):
+    def get_bytes(self):
+        # Check if cached JPEG exists
+        jpeg_cache_path = f"{self.path}_preview.jpg"
+        if os.path.exists(jpeg_cache_path):
+            with open(jpeg_cache_path, 'rb') as f:
+                frame_bytes = f.read()
+            return b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+
+        # Generate and cache JPEG
+        if self.image is None:
+            self.load_image()
+
+        # Resize for faster loading (max 1920px wide)
+        height, width = self.image.shape[:2]
+        if width > 1920:
+            scale = 1920 / width
+            new_width = 1920
+            new_height = int(height * scale)
+            image_resized = cv2.resize(self.image, (new_width, new_height))
+        else:
+            image_resized = self.image
+
+        # Convert RGB to BGR for OpenCV
+        image_bgr = cv2.cvtColor(image_resized, cv2.COLOR_RGB2BGR)
+        ret, buffer = cv2.imencode(".jpg", image_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if not ret:
+            raise Exception("Failed to encode image as JPEG")
+        frame_bytes = buffer.tobytes()
+
+        # Cache to disk
+        with open(jpeg_cache_path, 'wb') as f:
+            f.write(frame_bytes)
+
+        return b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+
+    def load_image_shape(self):
         if "image_shape" not in self.data:
-            shape = self.get_image().shape
+            shape = self.load_image().shape
             self.data["image_shape"] = shape
             self.export_data()
 
@@ -56,18 +96,10 @@ class Exposure:
         pixel_size = scale / res
         self.data["pixel_size"] = pixel_size
 
-        # Get focal length
-        focal_length = self.data["exif"]["MakerNotes:FocalLength"]
-        self.data["focal_length"] = focal_length
-
-        # Get pixel scale
-        pixel_scale = (pixel_size / focal_length) * 206.265
-        self.data["arcsec_per_pixel"] = pixel_scale
-
         # Get time
         time: str = self.data["exif"]["QuickTime:CreateDate"]
         time = time.replace(":", "-", 2)
-        time = time.replace(' ', "T")
+        time = time.replace(" ", "T")
         self.data["time_iso"] = time
         self.time = time
 
@@ -76,89 +108,130 @@ class Exposure:
             json.dump(self.data, f, indent=4)
 
     def import_data(self):
-        self.get_metadata()
-        self.export_data()
+        # Check if cached metadata exists
+        json_path = f"{self.path}.json"
+        if os.path.exists(json_path):
+            with open(json_path, 'r') as f:
+                self.data = json.load(f)
+        else:
+            self.get_metadata()
+            self.export_data()
 
-    def get_xyls(self, max_stars=20):
-        # load image if not already
-        if self.image is None:
-            self.get_image()
-
-        # sources
-        self.get_sources()
-        sources = self.sources
-        if len(sources) > max_stars:
-            sources.sort("flux")
-            sources = sources[-max_stars:]
-
-        x = sources["xcentroid"]
-        y = sources["ycentroid"]
-
+    def make_xyls(self):
         # Create FITS table
-        col1 = fits.Column(name="X", format="D", array=x)
-        col2 = fits.Column(name="Y", format="D", array=y)
-        hdu = fits.BinTableHDU.from_columns([col1, col2])
+        col1 = fits.Column(name="X", format="D", array=self.sources[:, 0])
+        col2 = fits.Column(name="Y", format="D", array=self.sources[:, 1])
+        col3 = fits.Column(name="FWHM", format="E", array=self.fwhm)
+        hdu = fits.BinTableHDU.from_columns([col1, col2, col3])
 
         # Add required headers
         hdu.header["IMAGEW"] = int(self.image.shape[1])
         hdu.header["IMAGEH"] = int(self.image.shape[0])
         hdu.writeto(f"{self.path}.xyls", overwrite=True)
 
-    def get_wcs(self, overwrite=False, max_stars=20):
-        if self.wcs is None:
-            self.plate_solve(overwrite, max_stars)
-        return self.wcs
+    def radec_radius(self):
+        height, width = self.image.shape[:2]
+        centre = tuple(
+            x.item() for x in self.wcs.pixel_to_world_values(width // 2 - 1, height // 2 - 1)
+        )
+        corner = tuple(x.item() for x in self.wcs.pixel_to_world_values(0, 0))
 
-    def plate_solve(self, overwrite=False, max_stars=20):
-        if os.path.exists(f"{self.path}.wcs") and not overwrite:
+        centre_sc = SkyCoord(*centre, unit="deg")
+        corner_sc = SkyCoord(*corner, unit="deg")
+        radius = 2 * centre_sc.separation(corner_sc).degree
+        self.ra = centre[0]
+        self.dec = centre[1]
+        self.radius = radius
+
+        return (centre[0], centre[1], radius)
+
+    def radec(self):
+        height, width = self.image.shape[:2]
+        return self.wcs.pixel_to_world(width // 2 - 1, height // 2 - 1)
+
+    def load_all(self):
+        self.load_image()
+        self.load_xyls()
+        self.load_wcs()
+
+    def load_wcs(self):
+        try:
             self.wcs = WCS(fits.getheader(f"{self.path}.wcs"))
-            return self.wcs
+        except Exception:
+            return None
+        return None
 
-        self.get_xyls(max_stars=max_stars)
+    def load_xyls(self):
+        try:
+            xyls = fits.getdata(f"{self.path}.xyls")
+            self.sources = np.array((xyls["X"], xyls["Y"])).T
+            self.fwhm = np.array((xyls["FWHM"])).T
+        except Exception:
+            return None
+        return None
 
+    def plate_solve(self, ra=None, dec=None, radius=None):
         # perform plate solve
-        subprocess.run(
-            ["solve-field", f"{self.path}.xyls", "--overwrite", "--wcs", f"{self.path}.wcs"],
+        command = ["solve-field", f"{self.path}.xyls", "--overwrite", "--wcs", f"{self.path}.wcs"]
+        if ra is not None:
+            command += ["--ra", f"{ra:.6f}"]
+        if dec is not None:
+            command += ["--dec", f"{dec:.6f}"]
+        if radius is not None:
+            command += ["--radius", f"{radius:.2f}"]
+        command += ["--no-plots"]
+        command += ["--no-remove-lines"]
+        command += ["--corr", "none"]
+        command += ["--match", "none"]
+        command += ["--rdls", "none"]
+
+        result = subprocess.run(
+            command,
             capture_output=True,
             text=True,
         )
 
-        # get wcs transform
-        self.wcs = WCS(fits.getheader(f"{self.path}.wcs"))
+        if result.returncode != 0:
+            print(result.stdout)
+            print(" ".join(command))
+            return None
 
-    def get_sources(self):
-        # process image
-        image = self.get_image()
-        if len(image.shape) == 3:
-            target = image.mean(axis=2)
-        mean, median, std = sigma_clipped_stats(target, sigma_lower=3.0, sigma_upper=3.0)
-        target = target - median
+        self.load_wcs()
+        self.radec_radius()
+        return self.wcs
 
-        # reduce image for faster detection
-        block_size = 4
-        target_reduced = block_reduce(target, block_size=block_size, func=np.mean)
+    def blobs(self, **kwargs):
+        # pull target image
+        target_channel = kwargs.get("target_channel", "green")
+        match target_channel:
+            case "red":
+                target = self.image[:, :, 0]
+            case "green":
+                target = self.image[:, :, 1]
+            case "blue":
+                target = self.image[:, :, 2]
+            case "mean":
+                target = self.image.mean(axis=2)
 
-        # detect stars
-        daofind = DAOStarFinder(fwhm=self.fwhm, threshold=self.threshold_factor * std)
-        self.sources = daofind(target_reduced)
+        kwargs.setdefault("min_sigma", 10)
 
-        # upscale points
-        self.sources["xcentroid"] = self.sources["xcentroid"] * block_size
-        self.sources["ycentroid"] = self.sources["ycentroid"] * block_size
+        blobs = blob_doh(target, **kwargs)
+        self.fwhm = blobs[:, 2]
+        self.sources = blobs[:, [1, 0]]
+        self.make_xyls()
+        return blobs
 
-    def plot_star_centroids(self):
+    def plot_star_centroids(self, **kwargs):
         if self.sources is None:
-            self.sources = self.get_sources()
+            print("No sources")
+            return
 
-        sources = self.sources
-        image = self.get_image()
+        positions = self.sources
 
-        positions = np.transpose((sources["xcentroid"], sources["ycentroid"]))
-        apertures = CircularAperture(positions, r=2 * self.fwhm)
-        if len(image.shape) == 3:
-            plt.imshow(image.mean(axis=2), cmap="Greys")
-        else:
-            plt.imshow(image, cmap="Greys")
+        apertures = [CircularAperture([pos], r=fwhm) for pos, fwhm in zip(positions, self.fwhm)]
 
-        apertures.plot(color="blue", lw=1.5, alpha=0.5)
+        plt.title(f"Sources: {len(self.sources)}")
+        plt.imshow(self.image)
+        for aperture in apertures:
+            aperture.plot(color="red", lw=1.5, alpha=0.5)
         plt.show()

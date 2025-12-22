@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astro Tool - FWHM Measurement</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/astro_tool.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Live FWHM Measurement</h1>
+        <div class="subtitle">Astrophotography Focus Assistant</div>
+    </header>
+
+    <div class="main-container">
+        <div class="video-container">
+            <div class="video-tab-nav">
+                <button class="video-tab-button active" data-video-tab="live">Live</button>
+                <button class="video-tab-button" data-video-tab="capture">Capture</button>
+                <button class="video-tab-button" data-video-tab="data">Data</button>
+                <button class="video-tab-button" data-video-tab="plots">Plots</button>
+            </div>
+
+            <div class="video-tab-content active" id="live">
+                <img id="videoFrame" src="/video_feed" alt="Camera Feed">
+                <div class="video-overlay">
+                    <div class="instructions">Click on a star to measure FWHM</div>
+                    <div class="fwhm-display" id="fwhmValue">--</div>
+                </div>
+            </div>
+
+            <div class="video-tab-content" id="capture">
+                <div class="placeholder-content">
+                    <h2>Capture Controls</h2>
+                    <p>Image capture settings will go here</p>
+                </div>
+            </div>
+
+            <div class="video-tab-content" id="data">
+                <div class="placeholder-content">
+                    <h2>Data Analysis</h2>
+                    <p>Data analysis tools will go here</p>
+                </div>
+            </div>
+
+            <div class="video-tab-content" id="plots">
+                <div class="placeholder-content">
+                    <h2>Plots & Graphs</h2>
+                    <p>Additional plots and visualizations will go here</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="tab-nav">
+                <button class="tab-button active" data-tab="control">Control</button>
+                <button class="tab-button" data-tab="stats">Statistics</button>
+                <button class="tab-button" data-tab="history">History</button>
+            </div>
+
+            <div class="tab-content active" id="control">
+                <div class="panel">
+                    <h2>Camera Control</h2>
+                    <div class="status-indicator">
+                        <div class="status-dot" id="statusDot"></div>
+                        <span id="statusText">Disconnected</span>
+                    </div>
+                    <div class="control-group">
+                        <button class="btn-primary" id="startBtn">Start Camera</button>
+                    </div>
+                    <div class="control-group">
+                        <button class="btn-danger" id="stopBtn" disabled>Stop Camera</button>
+                    </div>
+                    <div class="control-group">
+                        <button class="btn-secondary" id="resetBtn">Reset Measurement</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="stats">
+                <div class="panel">
+                    <h2>FWHM Statistics</h2>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-label">Current</div>
+                            <div class="stat-value" id="currentFwhm">--</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Best</div>
+                            <div class="stat-value good" id="bestFwhm">--</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Worst</div>
+                            <div class="stat-value bad" id="worstFwhm">--</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Samples</div>
+                            <div class="stat-value" id="sampleCount">0</div>
+                        </div>
+                    </div>
+                    <div class="star-info" id="starInfo" style="display: none;">
+                        <p><strong>Star Position:</strong> <span id="starPos">--</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="history">
+                <div class="panel">
+                    <h2>FWHM History</h2>
+                    <canvas id="fwhmChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/astro_tool.js') }}"></script>
+</body>
+</html>
