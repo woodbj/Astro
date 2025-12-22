@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html data-bs-theme="light" lang="en" data-bss-forced-theme="light">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
+    <title>Astro</title>
+    <link rel="stylesheet" href="assets/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400&amp;display=swap">
+    <link rel="stylesheet" href="assets/css/bootstrap.min.css">
+</head>
+
+<body>
+    <h1>AstroManager</h1>
+    <div class="row">
+        <div class="col col-lg-4 col-xl-3 col-xxl-2">
+            <div>
+                <ul class="nav nav-tabs" role="tablist">
+                    <li class="nav-item" role="presentation"><a class="nav-link active" role="tab" data-bs-toggle="tab" href="#tab-1" onclick="loadCameraTab()">Camera</a></li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane active" role="tabpanel" id="tab-1"><button class="btn btn-success w-100" id="live-start-stop" type="button" onclick="toggleStream()" data-active="false">Start Live</button></div>
+                </div>
+            </div>
+        </div>
+        <div class="col"><img class="img-fluid" id="feed" src="/image_feed" alt="Feed" style="max-width: 100%; max-height: 80vh; object-fit: contain;"></div>
+    </div>
+    <script src="assets/bootstrap/js/bootstrap.min.js"></script>
+    <script src="assets/js/bootstrap/js/bootstrap.min.js"></script>
+    <script src="assets/js/app.js"></script>
+</body>
+
+</html>

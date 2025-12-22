@@ -2,209 +2,14 @@ import subprocess
 import os
 import re
 import shlex
-import cv2
-import numpy as np
-import threading
-import queue
-from typing import Optional, Callable
-
-
-class CameraStream:
-    """Handles gphoto2 camera live view stream capture."""
-
-    def __init__(self, max_queue_size: int = 2):
-        """
-        Initialize camera stream handler.
-
-        Args:
-            max_queue_size: Maximum number of frames to queue (older frames dropped)
-        """
-        self.frame_queue = queue.Queue(maxsize=max_queue_size)
-        self.running = False
-        self.process = None
-        self.stream_thread = None
-        self.frame_callbacks = []
-        self.latest_frame = None
-        self.frame_lock = threading.Lock()
-
-    def add_frame_callback(self, callback: Callable):
-        """
-        Add a callback function to be called when new frame arrives.
-
-        Args:
-            callback: Function that takes a frame (numpy array) as argument
-        """
-        self.frame_callbacks.append(callback)
-
-    def start(self) -> bool:
-        """
-        Start the camera stream.
-
-        Returns:
-            True if started successfully, False otherwise
-        """
-        if self.running:
-            print("Stream already running")
-            return True
-
-        print("Starting camera stream...")
-
-        # Start gphoto2 process
-        try:
-            self.process = subprocess.Popen(
-                ['gphoto2', '--capture-movie', '--stdout'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                bufsize=10**8
-            )
-        except FileNotFoundError:
-            print("Error: gphoto2 not found. Please install gphoto2.")
-            return False
-        except Exception as e:
-            print(f"Error starting gphoto2: {e}")
-            return False
-
-        # Start stream reading thread
-        self.running = True
-        self.stream_thread = threading.Thread(target=self._read_mjpeg_stream, daemon=True)
-        self.stream_thread.start()
-
-        print("Camera stream started")
-        return True
-
-    def stop(self):
-        """Stop the camera stream and clean up resources."""
-        if not self.running:
-            return
-
-        print("Stopping camera stream...")
-        self.running = False
-
-        # Wait for thread to finish
-        if self.stream_thread:
-            self.stream_thread.join(timeout=2)
-
-        # Terminate gphoto2 process
-        if self.process:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=2)
-                print("gphoto2 process terminated successfully")
-            except subprocess.TimeoutExpired:
-                print("gphoto2 not responding, force killing...")
-                self.process.kill()
-                self.process.wait()
-                print("gphoto2 process killed")
-
-        # Release camera
-        try:
-            subprocess.run(
-                ['gphoto2', '--set-config', 'eosremoterelease=Release Full'],
-                timeout=5,
-                stderr=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL
-            )
-            print("Camera released")
-        except:
-            pass
-
-        print("Camera stream stopped")
-
-    def get_frame(self, timeout: float = 1.0) -> Optional[np.ndarray]:
-        """
-        Get the next frame from the queue.
-
-        Args:
-            timeout: Maximum time to wait for a frame
-
-        Returns:
-            Frame as numpy array or None if timeout
-        """
-        try:
-            return self.frame_queue.get(timeout=timeout)
-        except queue.Empty:
-            return None
-
-    def get_latest_frame(self) -> Optional[np.ndarray]:
-        """
-        Get the most recent frame without blocking.
-
-        Returns:
-            Latest frame as numpy array or None if no frame available
-        """
-        with self.frame_lock:
-            return self.latest_frame.copy() if self.latest_frame is not None else None
-
-    def _read_mjpeg_stream(self):
-        """Read MJPEG stream from gphoto2 in background thread."""
-        bytes_data = b''
-
-        while self.running:
-            try:
-                chunk = self.process.stdout.read(4096)
-                if not chunk:
-                    break
-
-                bytes_data += chunk
-
-                # Find JPEG boundaries
-                a = bytes_data.find(b'\xff\xd8')  # JPEG start marker
-                b = bytes_data.find(b'\xff\xd9')  # JPEG end marker
-
-                if a != -1 and b != -1:
-                    jpg = bytes_data[a:b+2]
-                    bytes_data = bytes_data[b+2:]
-
-                    # Decode JPEG frame
-                    frame = cv2.imdecode(
-                        np.frombuffer(jpg, dtype=np.uint8),
-                        cv2.IMREAD_COLOR
-                    )
-
-                    if frame is not None:
-                        # Store latest frame
-                        with self.frame_lock:
-                            self.latest_frame = frame
-
-                        # Add to queue (drop old frames if queue is full)
-                        if self.frame_queue.full():
-                            try:
-                                self.frame_queue.get_nowait()
-                            except queue.Empty:
-                                pass
-                        self.frame_queue.put(frame)
-
-                        # Call registered callbacks
-                        for callback in self.frame_callbacks:
-                            try:
-                                callback(frame.copy())
-                            except Exception as e:
-                                print(f"Frame callback error: {e}")
-
-            except Exception as e:
-                if self.running:  # Only print if we're supposed to be running
-                    print(f"Stream reading error: {e}")
-                break
-
-    def is_running(self) -> bool:
-        """Check if stream is currently running."""
-        return self.running
-
-    def __enter__(self):
-        """Context manager entry."""
-        self.start()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
-        self.stop()
+import time
+import signal
 
 
 class Camera:
     def __init__(self):
-        self.bulb_time = 30
-        self.bulb_mode = self.get("shutterspeed") == "bulb"
-        self.download = True
+        self.config = dict()
+        self.stream = None
 
     def command(self, command: str) -> str:
         command = ["gphoto2"] + shlex.split(command)
@@ -212,7 +17,17 @@ class Camera:
                                 capture_output=True,
                                 text=True,
                                 preexec_fn=os.setpgrp)
-        return result.stdout
+        if result.returncode == 0:
+            return result.stdout
+        else:
+            raise Exception("Could not connect to camera")
+
+    def is_on(self):
+        try:
+            self.command("--summary")
+            return True
+        except Exception:
+            return False
 
     def set(self, setting, value):
         result = self.command(f"--set-config {setting}={value}")
@@ -244,37 +59,53 @@ class Camera:
     def sync_time(self):
         self.command("--set-config datetimeutc=now")
 
-    def set_bulb(self, duration):
-        self.set("shutterspeed", "bulb")
-        self.bulb_time = duration
-        self.bulb_mode = True
+    def get_config(self):
+        result = self.command("--list-all-config")
+        entries = result.split("END")
+        config = dict()
+        for entry in entries:
+            lines = entry.split("\n")
+            title = ""
+            current = ""
+            choices = []
+            for line in lines:
+                if len(line) == 0:
+                    continue
 
-    def list_config_options(self):
-        result = self.command("--list-config")
-        heading = None
-        for line in result.split('\n'):
-            if len(line) == 0:
+                if line.startswith("/"):
+                    title = line.split("/")[-1]
+
+                else:
+                    line = line.split(":")
+                    if line[0] == "Current":
+                        current = line[1].strip()
+                    elif line[0] == "Choice":
+                        choice = line[1].strip()
+                        i = choice.find(" ")
+                        choice = choice[i:].split()
+                        choice = " ".join(choice)
+                        choices.append(choice)
+            if title == "":
                 continue
 
-            line = line.split('/')
-            if line[2] != heading:
-                heading = line[2]
-                print(heading)
-            print('-', line[3])
+            config[title] = {"Current": current, "Choices": choices}
+        self.config = config
 
-    def capture(self):
-        if self.bulb_mode and isinstance(self.bulb_time, int):
-            command = "--set-config shutterspeed=bulb"
-            command += " --keep"
-            command += " --set-config eosremoterelease=Immediate"
-            command += f" --wait-event={self.bulb_time}s"
-            command += " --set-config eosremoterelease=\"Release Full\""
-            command += " --wait-event-and-download=2s" if self.download else " --wait-event=2s"
+        return self.config
+
+    def capture(self, download=True):
+        # if self.bulb_mode and isinstance(self.bulb_time, int):
+        #     command = "--set-config shutterspeed=bulb"
+        #     command += " --keep"
+        #     command += " --set-config eosremoterelease=Immediate"
+        #     command += f" --wait-event={self.bulb_time}s"
+        #     command += " --set-config eosremoterelease=\"Release Full\""
+        #     command += " --wait-event-and-download=2s" if self.download else " --wait-event=2s"
+        # else:
+        if download:
+            command = "--capture-image-and-download --keep"
         else:
-            if self.download:
-                command = "--capture-image-and-download --keep"
-            else:
-                command = "--capture-image --keep"
+            command = "--capture-image --keep"
 
         result = self.command(command)
         return re.search(r'(\w+\.CR3)', result).group(1)
@@ -301,3 +132,77 @@ class Camera:
 
         # Success is false if it already exists on the pc
         return success
+
+    def start_stream(self):
+        # Check if stream exists and is still running
+        if self.stream is not None:
+            return self.stream
+
+        # Start new stream process
+        stream = subprocess.Popen(
+                ['gphoto2', '--capture-movie', '--stdout'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=10**8
+            )
+        time.sleep(0.5)
+        stdout = stream.stdout.peek(1024)
+        if b'debug' in stdout:
+            stream.kill()
+            self.stream = None
+            raise Exception("Turn on camera")
+        self.stream = stream
+        return self.stream
+
+    def end_stream(self):
+        if self.stream is None:
+            return True
+        self.stream.send_signal(signal.SIGINT)
+        self.stream.kill()
+        self.stream.wait()
+        self.stream = None
+        try:
+            self.command("--set-config eosremoterelease=4")
+            return True
+        except Exception:
+            return False
+
+
+class CameraSchedule:
+    def __init__(self, camera: Camera):
+        self.camera: Camera = camera
+        self.interrupt = False
+        camera.schedule = self
+
+    def end(self, *args):
+        self.interrupt = True
+
+    def run(self, exposure_duration, download_period_s=None):
+        # Setup camera
+        self.camera.set_bulb(exposure_duration)
+
+        # Admin
+        last_download_time = 0
+        self.interrupt = False
+        signal.signal(signal.SIGINT, self.end)
+
+        # Loop until interrupted
+        while not self.interrupt:
+            # print current time
+            print(f"{time.asctime()} > ", end="", flush=True)
+
+            # set download if triggered
+            if download_period_s is not None:
+                now = time.time()
+                if now - last_download_time > download_period_s:
+                    self.camera.download = True
+                    last_download_time = now
+
+            # take exposure
+            self.camera.capture()
+
+            # remove download
+            self.camera.download = False
+
+        # Remove interrupt handler
+        signal.signal(signal.SIGINT, signal.SIG_IGN)

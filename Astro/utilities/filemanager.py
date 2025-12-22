@@ -1,25 +1,40 @@
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-import time
-
-
-class FileHandler(FileSystemEventHandler):
-    def on_created(self, event):
-        if not event.is_directory:
-            print(f"New file detected: {event.src_path}")
-            # Your script logic here
+import os
+from astropy.table import QTable, Column
+from astropy.time import Time
 
 
 class FileManager:
-    def __init__(self):
+    def __init__(self, extension: str):
+        self.extension = extension
+        self.files: list[str] = [
+            f for f in os.listdir() if f.endswith(extension)
+        ]
+        self.files.sort()
+
         self.observer = Observer()
-        self.observer.schedule(FileHandler(), path='.', recursive=False)
+        self.observer.schedule(FileHandler(self), path='.', recursive=False)
         self.observer.start()
 
-    def run(self):
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.observer.stop()
-        self.observer.join()
+        self.data = QTable()
+        self.data["Image"] = Column([], dtype=str)
+        self.data["Time"] = Column([], dtype=Time)
+
+    def get_latest(self):
+        self.files.sort()
+        return self.files[-1]
+
+
+class FileHandler(FileSystemEventHandler):
+    def __init__(self, manager: FileManager):
+        super().__init__()
+        self.manager = manager
+
+    def on_created(self, event):
+        if event.is_directory:
+            return
+
+        filename = os.path.basename(event.src_path)
+        if filename.endswith(self.manager.extension):
+            self.manager.files.append(filename)

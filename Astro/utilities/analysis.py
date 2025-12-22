@@ -1,8 +1,3 @@
-"""
-FWHM (Full Width Half Maximum) measurement utilities for astrophotography.
-Provides functions for measuring star sharpness and focus quality.
-"""
-
 import cv2
 import numpy as np
 from scipy.optimize import curve_fit
@@ -30,10 +25,12 @@ def gaussian_2d(coords, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     x, y = coords
     xo = float(xo)
     yo = float(yo)
-    a = (np.cos(theta)**2)/(2*sigma_x**2) + (np.sin(theta)**2)/(2*sigma_y**2)
-    b = -(np.sin(2*theta))/(4*sigma_x**2) + (np.sin(2*theta))/(4*sigma_y**2)
-    c = (np.sin(theta)**2)/(2*sigma_x**2) + (np.cos(theta)**2)/(2*sigma_y**2)
-    g = offset + amplitude*np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) + c*((y-yo)**2)))
+    a = (np.cos(theta) ** 2) / (2 * sigma_x**2) + (np.sin(theta) ** 2) / (2 * sigma_y**2)
+    b = -(np.sin(2 * theta)) / (4 * sigma_x**2) + (np.sin(2 * theta)) / (4 * sigma_y**2)
+    c = (np.sin(theta) ** 2) / (2 * sigma_x**2) + (np.cos(theta) ** 2) / (2 * sigma_y**2)
+    g = offset + amplitude * np.exp(
+        -(a * ((x - xo) ** 2) + 2 * b * (x - xo) * (y - yo) + c * ((y - yo) ** 2))
+    )
     return g.ravel()
 
 
@@ -85,21 +82,17 @@ def calculate_fwhm(frame: np.ndarray, x: int, y: int, box_size: int = 40) -> Opt
 
         initial_guess = (
             amplitude,  # amplitude
-            cx,         # x center
-            cy,         # y center
-            3.0,        # sigma_x
-            3.0,        # sigma_y
-            0.0,        # theta (rotation)
-            background  # offset
+            cx,  # x center
+            cy,  # y center
+            3.0,  # sigma_x
+            3.0,  # sigma_y
+            0.0,  # theta (rotation)
+            background,  # offset
         )
 
         # Fit 2D Gaussian
         popt, _ = curve_fit(
-            gaussian_2d,
-            (x_coords, y_coords),
-            region.ravel(),
-            p0=initial_guess,
-            maxfev=1000
+            gaussian_2d, (x_coords, y_coords), region.ravel(), p0=initial_guess, maxfev=1000
         )
 
         # Extract sigma values and calculate FWHM
@@ -118,8 +111,14 @@ def calculate_fwhm(frame: np.ndarray, x: int, y: int, box_size: int = 40) -> Opt
         return None
 
 
-def draw_star_overlay(frame: np.ndarray, x: int, y: int, fwhm: Optional[float] = None,
-                     box_size: int = 40, color: Tuple[int, int, int] = (0, 0, 255)) -> np.ndarray:
+def draw_star_overlay(
+    frame: np.ndarray,
+    x: int,
+    y: int,
+    fwhm: Optional[float] = None,
+    box_size: int = 40,
+    color: Tuple[int, int, int] = (0, 0, 255),
+) -> np.ndarray:
     """
     Draw overlay markers on a frame showing the selected star and FWHM measurement.
 
@@ -139,11 +138,7 @@ def draw_star_overlay(frame: np.ndarray, x: int, y: int, fwhm: Optional[float] =
 
     # Draw box around star
     cv2.rectangle(
-        display_frame,
-        (x - half_box, y - half_box),
-        (x + half_box, y + half_box),
-        color,
-        2
+        display_frame, (x - half_box, y - half_box), (x + half_box, y + half_box), color, 2
     )
 
     # Draw crosshair
@@ -153,21 +148,14 @@ def draw_star_overlay(frame: np.ndarray, x: int, y: int, fwhm: Optional[float] =
     # Draw FWHM value if provided
     if fwhm is not None:
         text = f"FWHM: {fwhm:.2f} px"
-        cv2.putText(
-            display_frame,
-            text,
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1.0,
-            color,
-            2
-        )
+        cv2.putText(display_frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
 
     return display_frame
 
 
-def get_star_region(frame: np.ndarray, x: int, y: int, region_size: int = 80,
-                   scale_factor: int = 4) -> Optional[np.ndarray]:
+def get_star_region(
+    frame: np.ndarray, x: int, y: int, region_size: int = 80, scale_factor: int = 4
+) -> Optional[np.ndarray]:
     """
     Extract and scale up a region around a star for detailed viewing.
 
@@ -196,11 +184,7 @@ def get_star_region(frame: np.ndarray, x: int, y: int, region_size: int = 80,
 
     # Scale up for better visibility
     zoomed = cv2.resize(
-        region,
-        None,
-        fx=scale_factor,
-        fy=scale_factor,
-        interpolation=cv2.INTER_NEAREST
+        region, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_NEAREST
     )
 
     return zoomed
@@ -268,10 +252,10 @@ class FWHMTracker:
             Dictionary with current, best, worst, mean, std, and count
         """
         return {
-            'current': self.get_current(),
-            'best': self.get_best(),
-            'worst': self.get_worst(),
-            'mean': self.get_mean(),
-            'std': self.get_std(),
-            'count': self.get_count(),
+            "current": self.get_current(),
+            "best": self.get_best(),
+            "worst": self.get_worst(),
+            "mean": self.get_mean(),
+            "std": self.get_std(),
+            "count": self.get_count(),
         }

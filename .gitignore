@@ -166,3 +166,5 @@ tmp/
 *.CR3
 *.jpg
 testing/
+/*.json
+/*.xyls

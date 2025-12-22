@@ -12,6 +12,7 @@ from skimage.feature import blob_doh
 from astropy.time import Time
 from datetime import datetime
 from astropy.coordinates import SkyCoord
+import cv2
 
 
 class Exposure:
@@ -41,6 +42,14 @@ class Exposure:
         with rawpy.imread(f"{self.image_path}") as raw:
             self.image = raw.postprocess()
         return self.image
+
+    def get_bytes(self):
+        if self.image is None:
+            self.load_image()
+
+        ret, buffer = cv2.imencode(".jpg", self.image)
+        frame_bytes = buffer.tobytes()
+        return b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
 
     def load_image_shape(self):
         if "image_shape" not in self.data:
@@ -89,11 +98,13 @@ class Exposure:
 
     def radec_radius(self):
         height, width = self.image.shape[:2]
-        centre = tuple(x.item() for x in self.wcs.pixel_to_world_values(width // 2 - 1, height // 2 - 1))
+        centre = tuple(
+            x.item() for x in self.wcs.pixel_to_world_values(width // 2 - 1, height // 2 - 1)
+        )
         corner = tuple(x.item() for x in self.wcs.pixel_to_world_values(0, 0))
 
-        centre_sc = SkyCoord(*centre, unit='deg')
-        corner_sc = SkyCoord(*corner, unit='deg')
+        centre_sc = SkyCoord(*centre, unit="deg")
+        corner_sc = SkyCoord(*corner, unit="deg")
         radius = 2 * centre_sc.separation(corner_sc).degree
         self.ra = centre[0]
         self.dec = centre[1]
@@ -145,11 +156,6 @@ class Exposure:
             command,
             capture_output=True,
             text=True,
-        )
-
-        subprocess.run(
-            f"rm -f {self.directory}/*.solved {self.directory}/*.new {self.directory}/*.axy {self.directory}/*-indx.xyls",
-            shell=True
         )
 
         if result.returncode != 0:

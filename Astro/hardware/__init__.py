@@ -1,6 +1,8 @@
 """Hardware interface modules."""
 
-from .camera import Camera, CameraStream
+from .camera import Camera, CameraSchedule
 
-__all__ = ['CameraStream',
-           'Camera']
+__all__ = [
+    'Camera',
+    'CameraSchedule'
+    ]

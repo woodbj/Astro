@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html data-bs-theme="light" lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
+    <title>Astro</title>
+    <link rel="stylesheet" href="assets/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400&amp;display=swap">
+</head>
+
+<body>
+    <h1>AstroManager</h1>
+    <div class="row">
+        <div class="col col-lg-4 col-xl-3 col-xxl-1">
+            <div>
+                <ul class="nav nav-pills" role="tablist">
+                    <li class="nav-item" role="presentation"><a class="nav-link active" role="tab" data-bs-toggle="pill" id="live-select" href="#tab-1" onclick="updateFeeds()">Live</a></li>
+                    <li class="nav-item" role="presentation"><a class="nav-link" role="tab" data-bs-toggle="pill" id="capture-select" href="#tab-2" onclick="updateFeeds()">Capture&nbsp;</a></li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane active" role="tabpanel" id="tab-1"></div>
+                    <div class="tab-pane" role="tabpanel" id="tab-2"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <img id="feed" class="img-fluid" src="" alt="Feed">
+        </div>
+    </div>
+    <script src="assets/bootstrap/js/bootstrap.min.js"></script>
+    <script src="assets/js/app.js"></script>
+</body>
+
+</html>
