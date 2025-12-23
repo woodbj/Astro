@@ -47,6 +47,19 @@ class Camera:
 
         return None
 
+    def options(self, setting):
+        result = self.command(f"--get-config={setting}").split('\n')
+        options = []
+        for line in result:
+            if line.startswith("Choice:"):
+                option = line.split(":")[1]
+                option = option.strip()
+                idx = option.find(" ")
+                option = option[idx:].strip()
+                options.append(option)
+
+        return options
+
     def list(self, setting):
         result = self.command(f"--get-config={setting}").split('\n')
         for line in result:
@@ -93,19 +106,26 @@ class Camera:
 
         return self.config
 
-    def capture(self, download=True):
-        # if self.bulb_mode and isinstance(self.bulb_time, int):
-        #     command = "--set-config shutterspeed=bulb"
-        #     command += " --keep"
-        #     command += " --set-config eosremoterelease=Immediate"
-        #     command += f" --wait-event={self.bulb_time}s"
-        #     command += " --set-config eosremoterelease=\"Release Full\""
-        #     command += " --wait-event-and-download=2s" if self.download else " --wait-event=2s"
-        # else:
-        if download:
-            command = "--capture-image-and-download --keep"
+    def capture(self, pc=True, camera=True):
+        if pc:
+            command = "--capture-image-and-download"
         else:
-            command = "--capture-image --keep"
+            command = "--capture-image"
+
+        if camera:
+            command = f"{command} --keep"
+
+        result = self.command(command)
+        return re.search(r'(\w+\.CR3)', result).group(1)
+
+    def bulb_capture(self, bulb_duration, pc=True, camera=True):
+        command = "--set-config shutterspeed=bulb"
+        if camera:
+            command += " --keep"
+        command += " --set-config eosremoterelease=Immediate"
+        command += f" --wait-event={bulb_duration}s"
+        command += " --set-config eosremoterelease=\"Release Full\""
+        command += " --wait-event-and-download=2s" if pc else " --wait-event=2s"
 
         result = self.command(command)
         return re.search(r'(\w+\.CR3)', result).group(1)
@@ -180,43 +200,3 @@ class Camera:
         except Exception as e:
             print(f"Warning: Could not reset camera release mode: {e}")
             return False
-
-
-class CameraSchedule:
-    def __init__(self, camera: Camera):
-        self.camera: Camera = camera
-        self.interrupt = False
-        camera.schedule = self
-
-    def end(self, *args):
-        self.interrupt = True
-
-    def run(self, exposure_duration, download_period_s=None):
-        # Setup camera
-        self.camera.set_bulb(exposure_duration)
-
-        # Admin
-        last_download_time = 0
-        self.interrupt = False
-        signal.signal(signal.SIGINT, self.end)
-
-        # Loop until interrupted
-        while not self.interrupt:
-            # print current time
-            print(f"{time.asctime()} > ", end="", flush=True)
-
-            # set download if triggered
-            if download_period_s is not None:
-                now = time.time()
-                if now - last_download_time > download_period_s:
-                    self.camera.download = True
-                    last_download_time = now
-
-            # take exposure
-            self.camera.capture()
-
-            # remove download
-            self.camera.download = False
-
-        # Remove interrupt handler
-        signal.signal(signal.SIGINT, signal.SIG_IGN)

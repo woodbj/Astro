@@ -15,32 +15,55 @@
     <div class="row">
         <div class="col col-lg-4 col-xl-3 col-xxl-2">
             <div>
-                <ul class="nav nav-tabs" role="tablist">
-                    <li class="nav-item" role="presentation"><a class="nav-link active" role="tab" data-bs-toggle="tab" href="#tab-1" onclick="loadCameraTab()">Camera</a></li>
+                <ul class="nav nav-tabs" role="tablist" id="managers">
+                    <li class="nav-item" role="presentation"><a class="nav-link active" role="tab" data-bs-toggle="tab" id="session_manager" href="#tab-2">Session</a></li>
+                    <li class="nav-item" role="presentation"><a class="nav-link" role="tab" data-bs-toggle="tab" id="camera_manager" href="#tab-1" onclick="loadTab()">Camera</a></li>
                 </ul>
                 <div class="tab-content">
-                    <div class="tab-pane active" role="tabpanel" id="tab-1"><button class="btn btn-success w-100" id="live-start-stop" type="button" onclick="toggleStream()" data-active="false">Start Live</button><button class="btn btn-primary w-100" id="capture" type="button" onclick="capture()">Single Shot</button>
-                        <p>ISO</p><select id="iso" class="form-select">
-                            <optgroup label="This is a group">
-                                <option value="12" selected="">This is item 1</option>
-                                <option value="13">This is item 2</option>
-                                <option value="14">This is item 3</option>
-                            </optgroup>
+                    <div class="tab-pane active" role="tabpanel" id="tab-2">
+                        <p>Current Working Directory</p>
+                        <form><input class="form-control w-100 h-auto flex-wrap" type="text" id="cwd" onkeydown="if(event.key===&#39;Enter&#39;) updateSetting(event)"></form>
+                        <p>GPS Coordinates</p>
+                        <div class="container">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p>Lat:</p>
+                                    <form><input class="form-control w-100" type="text" id="lat" onkeydown="if(event.key===&#39;Enter&#39;) updateSetting(event)"></form>
+                                </div>
+                                <div class="col-md-6">
+                                    <p>Long:</p>
+                                    <form><input class="form-control w-100" type="text" id="lon" onsubmit="updateSetting(event)"></form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane" role="tabpanel" id="tab-1"><button class="btn btn-danger w-100" id="live_running" type="button" onclick="toggleStream()" data-active="false">Start Live</button><button class="btn btn-warning w-100" id="schedule_run" type="button" onclick="toggleSchedule()" data-active="false">Start Schedule</button><button class="btn btn-success w-100" id="capture" type="button" onclick="capture()">Single Shot</button>
+                        <p>ISO</p><select id="iso" class="form-select" onclick="updateSetting(event)">
+                            <optgroup label="TBA"></optgroup>
                         </select>
-                        <p>Shutter</p><select id="shutterspeed" class="form-select">
-                            <optgroup label="This is a group">
-                                <option value="12" selected="">This is item 1</option>
-                                <option value="13">This is item 2</option>
-                                <option value="14">This is item 3</option>
-                            </optgroup>
+                        <p>Shutter</p><select id="shutter" class="form-select" onclick="updateSetting(event)">
+                            <optgroup label="TBA"></optgroup>
                         </select>
-                        <p>Aperture</p><select id="aperture" class="form-select">
-                            <optgroup label="This is a group">
-                                <option value="12" selected="">This is item 1</option>
-                                <option value="13">This is item 2</option>
-                                <option value="14">This is item 3</option>
-                            </optgroup>
+                        <p class="form-label">Aperture</p><select id="aperture" class="form-select" onclick="updateSetting(event)">
+                            <optgroup label="TBA"></optgroup>
                         </select>
+                        <div class="container">
+                            <div class="row">
+                                <div class="col-md-6"><label class="form-label">Bulb Duration</label><input class="w-100" type="number" id="bulb_duration" min="0" step="1" onclick="updateSetting(event)"></div>
+                                <div class="col-md-6"><label class="form-label">Download Interval</label><input class="w-100" type="number" id="download_interval" min="0" step="1" onclick="updateSetting(event)"></div>
+                            </div>
+                        </div>
+                        <p>Download</p>
+                        <div class="container">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="download_camera" onclick="updateSetting(event)"><label class="form-check-label" for="formCheck-1">Camera</label></div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="download_pc" onclick="updateSetting(event)"><label class="form-check-label" for="formCheck-1">Computer</label></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
