@@ -1,7 +1,8 @@
-"""Hardware interface modules."""
-
 from .camera import Camera
+from .filesystem import FileWatcher
+
 
 __all__ = [
-    'Camera'
-    ]
+    "Camera",
+    "FileWatcher"
+]
