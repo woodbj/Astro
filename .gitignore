@@ -168,3 +168,8 @@ tmp/
 testing/
 /*.json
 /*.xyls
+Test/
+WebGUI/
+WebUI/
+Astro_copy/
+
