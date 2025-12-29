@@ -6,12 +6,13 @@ Provides a browser interface for viewing camera stream and measuring star FWHM.
 
 import os
 import argparse
+from dataclasses import asdict
 
-from flask import Flask, Response, render_template, jsonify, request
-from flask_socketio import SocketIO, emit
+from flask import Flask, Response, jsonify, request
+from flask_socketio import SocketIO
 from Astro.hardware import Camera, CameraController, CameraStream
 from Astro.terminal import InteractiveConsole
-
+from Astro.core import Observer
 
 # Get the directory where this file is located
 WEBUI_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -32,12 +33,25 @@ camera_controller = CameraController()
 camera_controller.init(camera)
 camera_stream = CameraStream(camera_controller.stream_ps)
 
+observer = Observer()
+
 # Initialize interactive console with access to camera objects
-console = InteractiveConsole(locals={
-    'camera': camera,
-    'camera_controller': camera_controller,
-    'app': app
-})
+console = InteractiveConsole(
+    locals={"camera": camera, "camera_controller": camera_controller, "app": app}
+)
+
+
+@app.route("/api/session/config", methods=["POST", "GET"])
+def session():
+    if request.method == "GET":
+        data = asdict(observer)
+        # print(data)
+    elif request.method == "POST":
+        data = request.json
+        for key, value in data.items():
+            observer.__setattr__(key, value)
+
+    return jsonify({"success": True, "data": data})
 
 
 @app.route("/api/terminal/execute", methods=["POST"])
@@ -53,12 +67,14 @@ def execute_terminal_code():
         # Execute code using the interactive console
         result = console.execute(code)
 
-        return jsonify({
-            "success": True,
-            "output": result.get("output", ""),
-            "error": result.get("error"),
-            "incomplete": result.get("incomplete", False)
-        })
+        return jsonify(
+            {
+                "success": True,
+                "output": result.get("output", ""),
+                "error": result.get("error"),
+                "incomplete": result.get("incomplete", False),
+            }
+        )
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -72,10 +88,10 @@ def get_terminal_namespace():
         # Convert to serializable format
         namespace_info = {}
         for name, obj in namespace.items():
-            if not name.startswith('_'):
+            if not name.startswith("_"):
                 namespace_info[name] = {
-                    'type': type(obj).__name__,
-                    'repr': repr(obj)[:100]  # Limit length
+                    "type": type(obj).__name__,
+                    "repr": repr(obj)[:100],  # Limit length
                 }
 
         return jsonify({"success": True, "namespace": namespace_info})
@@ -95,8 +111,7 @@ def reset_terminal():
 
 
 @app.route("/api/image/<filename>")
-def api_image(filename):
-    ...
+def api_image(filename): ...
 
 
 @app.route("/api/camera/config", methods=["GET", "POST"])
@@ -104,17 +119,17 @@ def camera_config():
     if request.method == "GET":
         data = camera_controller.get_config()
         # print(data['controller'])
-        return jsonify({"success": True,
-                        "data": data})
+        return jsonify({"success": True, "data": data})
 
     elif request.method == "POST":
-        print(request.json)
-        for k, v in request.json['camera'].items():
+        print("Delta:", request.json)
+        for k, v in request.json["camera"].items():
             camera.set(k, v)
 
-        for k, v in request.json['controller'].items():
+        for k, v in request.json["controller"].items():
             camera_controller.__setattr__(k, v)
         return jsonify({"success": True})
+
 
 @app.route("/api/camera/run", methods=["POST"])
 def run_camera():
@@ -122,11 +137,10 @@ def run_camera():
     return jsonify({"success": result})
 
 
-
 @app.errorhandler(Exception)
 def handle_exception(e):
-    return jsonify({"success": False,
-                    "error": str(e)}), 500
+    return jsonify({"success": False, "error": str(e)}), 500
+
 
 # @app.route("/api/session/cwd", methods=["POST"])
 # def change_cwd():
@@ -180,7 +194,10 @@ def handle_exception(e):
 def video_feed():
     """Video streaming route."""
     if camera_controller.camera_stream is not None:
-        return Response(camera_controller.camera_stream.generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+        return Response(
+            camera_controller.camera_stream.generate(),
+            mimetype="multipart/x-mixed-replace; boundary=frame",
+        )
     else:
         raise Exception("Camera stream not active")
 

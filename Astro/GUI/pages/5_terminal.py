@@ -18,6 +18,8 @@ if 'output_history' not in st.session_state:
     st.session_state.output_history = []
 if 'server_namespace' not in st.session_state:
     st.session_state.server_namespace = {}
+if 'clear_input' not in st.session_state:
+    st.session_state.clear_input = False
 
 
 def execute_code(code):
@@ -87,14 +89,21 @@ with col1:
         namespace = get_namespace()
         st.success(f"✓ Connected to server at {SERVER_URL}")
         st.session_state.server_namespace = namespace
-    except Exception as e:
+    except Exception:
         st.error(f"✗ Cannot connect to server at {SERVER_URL}")
         st.info("Make sure your Flask server is running with: "
                 "`python -m Astro.server`")
 
-    # Code input
+    # Code input - clear if flag is set
+    if st.session_state.clear_input:
+        default_value = ""
+        st.session_state.clear_input = False
+    else:
+        default_value = st.session_state.get("code_input", "")
+
     code_input = st.text_area(
         "Enter Python code:",
+        value=default_value,
         height=150,
         key="code_input",
         placeholder=("# Interact with live server objects:\n"
@@ -111,22 +120,30 @@ with col1:
         if st.button("Execute (Ctrl+Enter)", type="primary",
                      use_container_width=True):
             if code_input.strip():
+                # Execute code
                 stdout, stderr = execute_code(code_input)
 
-                # Add to history
+                # Add to history BEFORE rerun
+                if 'command_history' not in st.session_state:
+                    st.session_state.command_history = []
+                if 'output_history' not in st.session_state:
+                    st.session_state.output_history = []
+
                 st.session_state.command_history.append(code_input)
                 st.session_state.output_history.append({
                     'command': code_input,
-                    'stdout': stdout,
-                    'stderr': stderr
+                    'stdout': stdout if stdout else "",
+                    'stderr': stderr if stderr else ""
                 })
 
                 # Refresh namespace
                 st.session_state.server_namespace = get_namespace()
 
-                # Clear input (will happen on rerun)
-                st.session_state.code_input = ""
+                # Set flag to clear input on next rerun
+                st.session_state.clear_input = True
                 st.rerun()
+            else:
+                st.warning("Please enter some code to execute")
 
     with col_clear:
         if st.button("Clear History", use_container_width=True):

@@ -1,35 +1,35 @@
 import streamlit as st
 import requests
+import time
 
 camera_settings = ["iso", "aperture", "shutterspeed"]
+localhost = "192.168.86.139"
 
 
 def update():
     camera_changes = dict()
-    for key, val in st.session_state['camera'].items():
+    for key, val in st.session_state["camera"].items():
         if key in st.session_state:
-            old = val['Current']
+            old = val["Current"]
             new = st.session_state[key]
             if old != new:
                 camera_changes[key] = new
 
     controller_changes = dict()
-    for key, val in st.session_state['controller'].items():
+    for key, val in st.session_state["controller"].items():
         if key in st.session_state:
             old = val
             new = st.session_state[key]
             if old != new:
                 controller_changes[key] = new
 
-    output = {'camera': camera_changes,
-              'controller': controller_changes}
+    output = {"camera": camera_changes, "controller": controller_changes}
 
-    requests.post("http://localhost:5000/api/camera/config", json=output)
+    requests.post(f"http://{localhost}:5000/api/camera/config", json=output)
 
 
 def run_camera():
-    update()
-    requests.post("http://localhost:5000/api/camera/run")
+    requests.post(f"http://{localhost}:5000/api/camera/run")
 
 
 def get_current_index(data):
@@ -38,26 +38,37 @@ def get_current_index(data):
     return [i for i, v in enumerate(choices) if v == current][0]
 
 
-# block for camera data
+def render_no_camera():
+    st.header("Please connect camera and refresh")
+
+
 def render_camera():
     # get current state
-    response = requests.get("http://localhost:5000/api/camera/config")
+    response = requests.get(f"http://{localhost}:5000/api/camera/config")
     data = response.json()
     # st.json(data, expanded=False)
     if not data["success"]:
+        render_no_camera()
         return
 
     camera = data["data"]["camera"]
     controller = data["data"]["controller"]
-    st.session_state['camera'] = camera
-    st.session_state['controller'] = controller
+    st.session_state["camera"] = camera
+    st.session_state["controller"] = controller
+
+    active = controller['active']
 
     st.segmented_control(
         label="Camera Mode",
-        options=controller['modes'],
-        default=controller['mode'],
-        key="mode"
+        options=controller["modes"],
+        default=controller["mode"],
+        key="mode",
+        on_change=update,
+        disabled=active
     )
+
+    unix_time = camera['datetimeutc']['Current']
+    st.write(f"Camera Time: {time.ctime(int(unix_time))}")
 
     for item in camera_settings:
         config = camera[item]
@@ -65,47 +76,55 @@ def render_camera():
             label=item,
             options=config["Choices"],
             index=get_current_index(config),
-            key=item
+            key=item,
+            on_change=update,
+            disabled=active
         )
 
-    st.number_input(
-        label="Bulb Time",
-        min_value=0,
-        value=controller['bulb_time'],
-        key='bulb_time'
-    )
+    if camera["shutterspeed"]["Current"] == "bulb":
+        st.number_input(
+            label="Bulb Time",
+            min_value=0,
+            value=controller["bulb_time"],
+            key="bulb_time",
+            on_change=update,
+            disabled=active
+        )
 
-    st.number_input(
-        label="Download Interval",
-        min_value=0,
-        value=controller['download_interval'],
-        key='download_interval'
-    )
+    if controller["mode"] == "Schedule":
+        st.number_input(
+            label="Download Interval",
+            min_value=0,
+            value=controller["download_interval"],
+            key="download_interval",
+            on_change=update,
+            disabled=active
+        )
 
-    st.toggle(
-        label="Keep capture on camera",
-        value=controller['keep'],
-        key="keep"
-    )
+    if controller["mode"] != "Stream":
+        st.toggle(
+            label="Keep capture on camera",
+            value=controller["keep"],
+            key="keep",
+            on_change=update,
+            disabled=active
+        )
 
-    st.toggle(
-        label="Download to PC",
-        value=controller['download'],
-        key="download"
-    )
+        st.toggle(
+            label="Download to PC",
+            value=controller["download"],
+            key="download",
+            on_change=update,
+            disabled=active
+        )
 
-    st.button(
-        label="Update Configuration",
-        on_click=update
-    )
-
-    label = "Stop" if controller['active'] else "Run"
+    label = "Stop" if controller["active"] else "Run"
     label += f" {controller['mode']}"
 
-    st.button(
-        label=label,
-        on_click=run_camera
-    )
+    st.button(label=label, on_click=run_camera)
+
+    if controller["mode"] == "Stream" and controller["active"]:
+        st.link_button(label="Open Feed", url=f"http://{localhost}:5000/video_feed")
 
     st.json(data, expanded=False)
 

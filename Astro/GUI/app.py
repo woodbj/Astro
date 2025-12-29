@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+localhost = "192.168.86.139"
+
 # Page config
 st.set_page_config(page_title="Layout Demo", layout="wide")
 
@@ -19,10 +21,10 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     st.metric("Metric 1", "1,234", "+12%")
-    
+
 with col2:
     st.metric("Metric 2", "5,678", "-3%")
-    
+
 with col3:
     st.metric("Metric 3", "9,012", "+8%")
 
