@@ -37,7 +37,12 @@ observer = Observer()
 
 # Initialize interactive console with access to camera objects
 console = InteractiveConsole(
-    locals={"camera": camera, "camera_controller": camera_controller, "app": app}
+    locals={
+        "camera": camera,
+        "camera_controller": camera_controller,
+        "app": app,
+        "observer": observer,
+    }
 )
 
 
