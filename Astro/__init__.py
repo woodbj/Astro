@@ -1,4 +1,4 @@
-from .hardware import Camera, FileWatcher
+from .hardware import Camera, FileWatcher, CameraController, CameraStream
 from .core import Exposure, Observer
 from .tools import PlateSolver, SourceDetector, plot_exposure
 
@@ -10,5 +10,7 @@ __all__ = [
     "PlateSolver",
     "SourceDetector",
     "plot_exposure",
-    "Observer"
+    "Observer",
+    "CameraController",
+    "CameraStream"
 ]

@@ -1,8 +1,10 @@
-from .camera import Camera
+from .camera import Camera, CameraController, CameraStream
 from .filesystem import FileWatcher
 
 
 __all__ = [
     "Camera",
-    "FileWatcher"
+    "CameraController",
+    "FileWatcher",
+    "CameraStream"
 ]
