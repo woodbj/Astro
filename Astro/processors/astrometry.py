@@ -15,7 +15,7 @@ class PlateSolve(Processor):
             wcs = WCS(fits.getheader(exposure.path.with_suffix(".wcs")))
             return wcs
         except Exception:
-            return None
+            raise Exception("Could not load .wcs file")
 
     def make_xyls(self, exposure: Exposure):
         # Create FITS table with sources stored as (X, Y)
