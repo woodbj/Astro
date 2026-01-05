@@ -1,11 +1,13 @@
-"""Filesystem monitoring and management utilities for astrophotography workflows."""
-
 import os
 import threading
 import time
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable
+import numpy as np
+import rawpy
+import exiftool
+import json
 
 
 @dataclass(frozen=True)
@@ -23,7 +25,7 @@ class Watch:
     """
     path: Path
     ext: str
-    callback: Callable[[set[Path]], None]
+    callback: Callable[[list[Path]], None]
 
     def __post_init__(self) -> None:
         """Validate the watch configuration after initialization."""
@@ -48,12 +50,14 @@ class FileSystem:
         watching: Flag indicating if the watch thread is running.
     """
 
-    def __init__(self, home: Path) -> None:
+    def __init__(self, home: Path | None = None) -> None:
         """Initialize the filesystem manager.
 
         Args:
             home: Path to set as the home/working directory.
         """
+        if home is None:
+            home = Path(os.getcwd())
         self.home: Path = home.absolute()
         os.chdir(self.home)
         self.lock: threading.Lock = threading.Lock()
@@ -73,7 +77,7 @@ class FileSystem:
         """
         try:
             os.chdir(home.absolute())
-            self.home = os.getcwd()
+            self.home = Path(os.getcwd())
         except Exception as e:
             raise Exception(f"{e}: os.chdir({home}) failed")
 
@@ -136,10 +140,35 @@ class FileSystem:
 
                 # populate file list
                 files = [(path / Path(f)).absolute() for f in os.listdir(path)]
-                files = set(f for f in files if f.suffix == w.ext)
+                files = list(f for f in files if f.suffix == w.ext)
+                files.sort()
 
                 # callback only if there are new files
                 if len(files) > 0:
                     w.callback(files)
 
             time.sleep(self.interval)
+
+
+class ImageIO:
+    output_bps = 8
+    gamma = (1.0, 1.0)
+    exp_shift = 0.0
+
+    @classmethod
+    def get_raw(cls, path: Path) -> np.ndarray:
+        with rawpy.imread(str(path)) as raw:
+            image: np.ndarray = raw.postprocess(
+                output_bps=cls.output_bps, gamma=cls.gamma, exp_shift=cls.exp_shift
+            )
+            return image
+
+    @classmethod
+    def get_metadata(cls, path: Path) -> dict:
+        with exiftool.ExifToolHelper() as et:
+            exif = et.get_metadata(str(path))[0]
+
+        with open(path.with_suffix(".json").with_stem(f"{path.stem}_exif"), "w") as f:
+            json.dump(exif, f, indent=2)
+
+        return exif

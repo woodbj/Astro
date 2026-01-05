@@ -1,11 +1,15 @@
-from .astrometry import PlateSolver
-from .photometry import SourceDetector
-from .visualise import plot_exposure
-from .processing import get_processors
+from .visualise import plot_exposure, export_jpeg
+from ..processors.base import get_processors, build_pipeline, Pipeline, discover_processors, Processor
+from .drift import Drift
+
 
 __all__ = [
-    "PlateSolver",
-    "SourceDetector",
     "plot_exposure",
-    "get_processors"
+    "get_processors",
+    "discover_processors",
+    "build_pipeline",
+    "Pipeline",
+    "export_jpeg",
+    "Processor",
+    "Drift"
 ]

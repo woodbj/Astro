@@ -2,14 +2,20 @@
 Interactive Python Terminal - Streamlit Page
 Provides a REPL interface with access to live server camera and controller objects.
 """
-import streamlit as st
-import requests
+import sys
+from pathlib import Path
+
+# Path manipulation before other imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import streamlit as st  # noqa: E402
+from config import FLASK_URL, api_get, api_post  # noqa: E402
 
 # Page config
 st.set_page_config(page_title="Python Terminal", layout="wide")
 
 # Server configuration
-SERVER_URL = st.session_state.get('server_url', 'http://localhost:5000')
+SERVER_URL = st.session_state.get('server_url', FLASK_URL)
 
 # Initialize session state for command history and output
 if 'command_history' not in st.session_state:
@@ -24,44 +30,27 @@ if 'clear_input' not in st.session_state:
 
 def execute_code(code):
     """Execute Python code on the server and get results."""
-    try:
-        response = requests.post(
-            f"{SERVER_URL}/api/terminal/execute",
-            json={"code": code},
-            timeout=30
-        )
+    # Use api_post with return_keys to get both output and error
+    result = api_post(
+        "/api/terminal/execute",
+        json={"code": code},
+        timeout=30,
+        return_keys=["output", "error"]
+    )
 
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('success'):
-                return data.get('output', ''), data.get('error')
-            else:
-                return '', data.get('error', 'Unknown error')
-        else:
-            return '', f"HTTP Error {response.status_code}: {response.text}"
-
-    except requests.exceptions.ConnectionError:
-        return '', f"Cannot connect to server at {SERVER_URL}. Is the Flask server running?"
-    except Exception as e:
-        return '', f"Request error: {str(e)}"
+    if result is not None:
+        return result.get('output', ''), result.get('error')
+    else:
+        return '', "Failed to execute code"
 
 
 def get_namespace():
     """Get the current namespace from the server."""
-    try:
-        response = requests.get(
-            f"{SERVER_URL}/api/terminal/namespace",
-            timeout=5
-        )
+    result = api_get("/api/terminal/namespace", timeout=5)
 
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('success'):
-                return data.get('namespace', {})
-
-        return {}
-
-    except Exception:
+    if result is not None:
+        return result.get('namespace', {})
+    else:
         return {}
 
 

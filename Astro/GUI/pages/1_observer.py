@@ -1,7 +1,13 @@
-import streamlit as st
-import requests
+import sys
+from pathlib import Path
 
-st.set_page_config("Camera Control")
+# Path manipulation before other imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import streamlit as st  # noqa: E402
+from config import api_get, api_post  # noqa: E402
+
+st.set_page_config("Observer Configuration")
 
 
 def update():
@@ -13,16 +19,16 @@ def update():
             if old != new:
                 changes[key] = new
 
-    requests.post(f"http://{localhost}:5000/api/session/config", json=changes)
+    api_post("/api/session/config", json=changes)
 
 
-localhost = "192.168.86.139"
-response = requests.get(f"http://{localhost}:5000/api/session/config")
-data = response.json()
+data = api_get("/api/session/config")
 
-# st.json(data, expanded=False)
-data = data["data"]
-st.session_state["observer"] = data
+if data:
+    st.session_state["observer"] = data
+else:
+    st.error("Failed to load observer configuration")
+    st.stop()
 
 st.header("Observer Data")
 st.number_input(label="Latitude", value=data["latitude"], key="latitude", on_change=update)

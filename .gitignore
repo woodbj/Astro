@@ -172,4 +172,5 @@ Test/
 WebGUI/
 WebUI/
 Astro_copy/
-
+pipelines/
+results/

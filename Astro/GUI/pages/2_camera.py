@@ -1,9 +1,14 @@
-import streamlit as st
-import requests
-import time
+import sys
+from pathlib import Path
+
+# Path manipulation before other imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import streamlit as st  # noqa: E402
+import time  # noqa: E402
+from config import api_get, api_post, FLASK_URL  # noqa: E402
 
 camera_settings = ["iso", "aperture", "shutterspeed"]
-localhost = "192.168.86.139"
 
 
 def update():
@@ -25,11 +30,11 @@ def update():
 
     output = {"camera": camera_changes, "controller": controller_changes}
 
-    requests.post(f"http://{localhost}:5000/api/camera/config", json=output)
+    api_post("/api/camera/config", json=output)
 
 
 def run_camera():
-    requests.post(f"http://{localhost}:5000/api/camera/run")
+    api_post("/api/camera/run")
 
 
 def get_current_index(data):
@@ -44,15 +49,14 @@ def render_no_camera():
 
 def render_camera():
     # get current state
-    response = requests.get(f"http://{localhost}:5000/api/camera/config")
-    data = response.json()
-    # st.json(data, expanded=False)
-    if not data["success"]:
+    response_data = api_get("/api/camera/config")
+
+    if not response_data:
         render_no_camera()
         return
 
-    camera = data["data"]["camera"]
-    controller = data["data"]["controller"]
+    camera = response_data["camera"]
+    controller = response_data["controller"]
     st.session_state["camera"] = camera
     st.session_state["controller"] = controller
 
@@ -124,9 +128,9 @@ def render_camera():
     st.button(label=label, on_click=run_camera)
 
     if controller["mode"] == "Stream" and controller["active"]:
-        st.link_button(label="Open Feed", url=f"http://{localhost}:5000/video_feed")
+        st.link_button(label="Open Feed", url=f"{FLASK_URL}/video_feed")
 
-    st.json(data, expanded=False)
+    st.json(response_data, expanded=False)
 
 
 render_camera()
