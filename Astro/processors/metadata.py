@@ -8,7 +8,7 @@ from datetime import datetime
 class MetaData(Processor):
     def __call__(self, exposure: Exposure) -> Exposure:
         with exiftool.ExifToolHelper() as et:
-            exif = et.get_metadata(exposure.path)[0]
+            exif = et.get_metadata(str(exposure.path.absolute()))[0]
 
         # Get exif data
         time: str = exif["QuickTime:CreateDate"]

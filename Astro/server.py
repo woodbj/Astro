@@ -157,6 +157,8 @@ def session():
         data = asdict(observer)
     elif request.method == "POST":
         data = request.json
+        if data is None:
+            raise Exception("No data provided")
         for key, value in data.items():
             observer.__setattr__(key, value)
 

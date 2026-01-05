@@ -20,6 +20,8 @@ class PlateSolve(Processor):
     def make_xyls(self, exposure: Exposure):
         # Create FITS table with sources stored as (X, Y)
         stars = exposure.stars
+        if stars is None:
+            raise Exception("Exposure has no stars with which to make .xyls file")
         x = [s.x for s in stars]
         y = [s.y for s in stars]
         col1 = fits.Column(name="X", format="D", array=x)
@@ -27,6 +29,8 @@ class PlateSolve(Processor):
         hdu = fits.BinTableHDU.from_columns([col1, col2])
 
         # Add required headers
+        if exposure.width is None or exposure.height is None:
+            raise Exception("Exposure width or height not specified")
         hdu.header["IMAGEW"] = int(exposure.width)
         hdu.header["IMAGEH"] = int(exposure.height)
         hdu.writeto(f"{exposure.path.with_suffix(".xyls")}", overwrite=True)

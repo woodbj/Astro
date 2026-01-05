@@ -9,10 +9,10 @@ from astropy.stats import gaussian_sigma_to_fwhm
 
 
 class SourceDetect(Processor):
-    min_sigma: float = Field(
+    min_sigma: int = Field(
         default=10, ge=1, le=100, description="Minimum standard deviation for Gaussian kernel"
     )
-    max_sigma: float = Field(
+    max_sigma: int = Field(
         default=30, ge=1, le=200, description="Maximum standard deviation for Gaussian kernel"
     )
     num_sigma: int = Field(

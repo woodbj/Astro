@@ -46,7 +46,7 @@ class Processor(AstroData, ABC):
 
 class Pipeline:
     def __init__(self):
-        self.output: list[dict] = None
+        self.output: list[dict] = []
         self.pipeline: list[Processor] = []
 
     def add(self, processor: Processor):
